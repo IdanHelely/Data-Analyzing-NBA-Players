@@ -9,7 +9,7 @@
 ## Team Members
 
 * Idan Helely
-* Michal __________
+* Michal Kasyanov
 * Ganit Golin
 * Noam Molay
 
@@ -22,20 +22,6 @@ This project investigates which on-court performance metrics have the strongest 
 Using player statistics from the 2015–2016 NBA season, we build separate multiple linear regression models for offensive and defensive player groups. Variable selection is performed using **AIC Stepwise Regression**, while controlling for player experience, height, and minutes played.
 
 The project includes statistical modeling, model comparison, and visualizations that illustrate how different performance metrics contribute to NBA salaries.
-
----
-
-# Repository Structure
-
-```
-Project/
-│
-├── README.md
-├── final R.R                 # R script used for the analysis
-├── Data.xlsx                 # NBA dataset
-├── FinalReport.pdf           # Final project report
-└── Presentation.pdf          # Project presentation (if included)
-```
 
 ---
 
