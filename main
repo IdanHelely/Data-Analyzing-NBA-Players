@@ -1,0 +1,298 @@
+library(rsq)
+library(MASS)
+library(tidyverse)
+library(readxl)
+library(scales)
+library(broom)
+
+
+nba <- read_excel("C:/Users/idanh/OneDrive/מסמכים/uni/year 2/semester 2/data analizing/final project/Data.xlsx")
+
+# mutates the names of the columns for easier code writing
+names(nba) <- names(nba) %>%
+  str_replace_all("[\r\n]+", "_") %>%
+  str_replace_all("\\s+", "_") %>%
+  str_replace_all("_+", "_") %>%
+  str_remove_all("_$")
+
+# shows the salary in the milions digits
+nba <- nba %>%
+  mutate(
+    Salary_Millions = Salary / 1000000
+  )
+
+# filters by positiob and creates the offensive group
+offensive_players <- nba %>%
+  filter(Position %in% c("PG", "SG", "SF"))
+
+# filters by positiob and creates the defensive group
+defensive_players <- nba %>%
+  filter(Position %in% c("PF", "C", "SF"))
+
+# /////////////////////////////////////////////////////////////
+# ///////////////////// defensive /////////////////////////////
+# /////////////////////////////////////////////////////////////
+
+# control variables always stay in the model
+base_defensive <- lm(
+  Salary_Millions ~ Experience + Height + Minutes_Played,
+  data = defensive_players
+)
+
+# full model = controls + performance variables
+full_defensive <- lm(
+  Salary_Millions ~ Experience + Height + Minutes_Played +
+    Field_Goals + Free_Throws + Assists +
+    Total_Rebounds + Steals + Blocks +
+    Turnovers + Personal_Fouls,
+  data = defensive_players
+)
+
+# stepwise: controls stay, performance variables are selected
+# uses stepAIC method
+stepwise_model_def <- stepAIC(
+  base_defensive,
+  scope = list(
+    lower = base_defensive,
+    upper = full_defensive
+  ),
+  direction = "both"
+)
+
+# /////////////////////////////////////////////////////////////
+# ///////////////////// offensive /////////////////////////////
+# /////////////////////////////////////////////////////////////
+
+base_offensive <- lm(
+  Salary_Millions ~ Experience + Height + Minutes_Played,
+  data = offensive_players
+)
+
+full_offensive <- lm(
+  Salary_Millions ~ Experience + Height + Minutes_Played +
+    Field_Goals + Free_Throws + Assists +
+    Total_Rebounds + Steals + Blocks +
+    Turnovers + Personal_Fouls,
+  data = offensive_players
+)
+
+stepwise_model_off <- stepAIC(
+  base_offensive,
+  scope = list(
+    lower = base_offensive,
+    upper = full_offensive
+  ),
+  direction = "both"
+)
+
+# //////////////////////////////////////
+# ///////////// graphs /////////////////
+# //////////////////////////////////////
+
+# confidence interval graph - defensive
+def_coef <- tidy(stepwise_model_def, conf.int = TRUE) %>%
+  filter(
+    term != "(Intercept)",
+    !term %in% c("Experience", "Height", "Minutes_Played")
+  )
+
+ggplot(def_coef,
+       aes(x = estimate,
+           y = reorder(term, estimate),
+           color = p.value < 0.05)) +
+  
+  geom_vline(xintercept = 0,
+             linetype = "dashed") +
+  
+  geom_errorbarh(
+    aes(xmin = conf.low,
+        xmax = conf.high),
+    height = 0.2
+  ) +
+  
+  geom_point(size = 4) +
+  
+  scale_color_manual(
+    values = c("red", "blue"),
+    labels = c("Not Significant", "Significant"),
+    name = ""
+  ) +
+  
+  labs(
+    title = "Defensive Model: Estimated Effects of Performance Variables (95% CI)",
+    x = "Coefficient Estimate",
+    y = "Model Variables"
+  ) +
+  
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(hjust = 0.4)
+  )
+
+# confidence interval graph - offensive
+off_coef <- tidy(stepwise_model_off, conf.int = TRUE) %>%
+  filter(
+    term != "(Intercept)",
+    !term %in% c("Experience", "Height", "Minutes_Played")
+  )
+
+ggplot(off_coef,
+       aes(x = estimate,
+           y = reorder(term, estimate),
+           color = p.value < 0.05)) +
+  
+  geom_vline(xintercept = 0,
+             linetype = "dashed") +
+  
+  geom_errorbarh(
+    aes(xmin = conf.low,
+        xmax = conf.high),
+    height = 0.2
+  ) +
+  
+  geom_point(size = 4) +
+  
+  scale_color_manual(
+    values = c("red", "blue"),
+    labels = c("Not Significant", "Significant"),
+    name = ""
+  ) +
+  
+  labs(
+    title = "Offensive Model: Estimated Effects of Performance Variables (95% CI)",
+    x = "Coefficient Estimate",
+    y = "Model Variables"
+  ) +
+  
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(hjust = 0.4)
+  )
+
+
+# /////////////////////////////////////////////////////////////
+
+
+plot_df <- nba %>%
+  select(Salary_Millions, Field_Goals, Assists, Turnovers, Free_Throws) %>%
+  pivot_longer(
+    cols = c(Field_Goals, Assists, Turnovers, Free_Throws),
+    names_to = "Metric",
+    values_to = "Value"
+  ) %>%
+  group_by(Metric) %>%
+  mutate(
+    Quartile = ntile(Value, 4),
+    Quartile = factor(
+      Quartile,
+      levels = c(1, 2, 3, 4),
+      labels = c(
+        "Bottom 25%",
+        "Below Average",
+        "Above Average",
+        "Top 25%"
+      )
+    )
+  ) %>%
+  ungroup() %>%
+  filter(!is.na(Quartile))
+
+# Cleaner facet names
+plot_df$Metric <- recode(
+  plot_df$Metric,
+  Field_Goals = "Field Goals",
+  Free_Throws = "Free Throws",
+  Assists = "Assists",
+  Turnovers = "Turnovers"
+)
+
+ggplot(
+  plot_df,
+  aes(
+    x = Quartile,
+    y = Salary_Millions,
+    fill = Quartile
+  )
+) +
+  geom_boxplot(
+    alpha = 0.85,
+    outlier.alpha = 0.5
+  ) +
+  facet_wrap(~ Metric) +
+  scale_y_continuous(
+    labels = label_dollar(
+      prefix = "$",
+      suffix = "M"
+    )
+  ) +
+  labs(
+    title = "Salary Distribution by Performance Level",
+    subtitle = "Players grouped by quartiles of significant performance metrics",
+    x = "Performance Group",
+    y = "Salary (Millions USD)"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    legend.position = "none",
+    axis.text.x = element_text(angle = 20, hjust = 1),
+    strip.text = element_text(face = "bold", size = 12)
+  )
+
+
+# ///////////////////////////////////////////////////////
+
+
+# Standardized coefficients - offensive model
+beta_off <- lm.beta(stepwise_model_off)
+
+coef_off <- data.frame(
+  Variable = names(beta_off$standardized.coefficients),
+  Beta = as.numeric(beta_off$standardized.coefficients),
+  Group = "Offensive Model"
+)
+
+# Standardized coefficients - defensive model
+beta_def <- lm.beta(stepwise_model_def)
+
+coef_def <- data.frame(
+  Variable = names(beta_def$standardized.coefficients),
+  Beta = as.numeric(beta_def$standardized.coefficients),
+  Group = "Defensive Model"
+)
+
+# Combine both models and remove control variables only from the graph
+coef_compare <- bind_rows(coef_off, coef_def) %>%
+  filter(Variable != "(Intercept)") %>%
+  filter(!Variable %in% c(
+    "Experience",
+    "Height",
+    "Minutes_Played"
+  )) %>%
+  mutate(
+    Abs_Beta = abs(Beta)
+  )
+
+# Plot
+ggplot(
+  coef_compare,
+  aes(
+    x = reorder(Variable, Abs_Beta),
+    y = Abs_Beta,
+    fill = Group
+  )
+) +
+  geom_col(position = "dodge") +
+  coord_flip() +
+  labs(
+    title = "Relative Importance of Performance Metrics by Position Group",
+    x = "Performance Metric",
+    y = "Standardized Coefficient |β|",
+    fill = "Model"
+  ) +
+  theme_minimal()+
+  theme_minimal(base_size = 20)
+
+
+
