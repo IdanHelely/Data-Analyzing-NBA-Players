@@ -21,6 +21,23 @@ nba <- nba %>%
     Salary_Millions = Salary / 1000000
   )
 
+nba <- nba %>%
+  mutate(
+    across(
+      c(
+        Field_Goals,
+        Free_Throws,
+        Assists,
+        Total_Rebounds,
+        Steals,
+        Blocks,
+        Turnovers,
+        Personal_Fouls
+      ),
+      ~ as.numeric(scale(.))
+    )
+  )
+
 # filters by positiob and creates the offensive group
 offensive_players <- nba %>%
   filter(Position %in% c("PG", "SG", "SF"))
